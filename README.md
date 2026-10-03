@@ -29,6 +29,12 @@ python -m tamagodji --mode mock
 Available commands are `feed`, `play`, `light 0-100`, `sound 0-100`, `tick`, and
 `quit`.
 
+The pet's needs use persisted elapsed time rather than loop count. Fullness falls
+slowly while awake and more slowly while asleep. Darkness and daylight create
+one-time `Good night!` and `Good morning!` messages. Prolonged hunger can make the
+pet sick, but feeding it can recover the pet; there is no permanent death in this
+version.
+
 Run tests with:
 
 ```bash
@@ -70,6 +76,9 @@ python -m tamagodji --mode hardware \
 The micro:bit message format is documented in
 [`docs/microbit-protocol.md`](docs/microbit-protocol.md). A systemd service and web
 API will be added after the first hardware loop is verified.
+
+Voice output is intentionally optional for now. The OLED displays the sleep and
+wake messages; a small powered speaker can be added later for spoken greetings.
 
 ## Flash the micro:bits
 
