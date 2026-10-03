@@ -32,3 +32,33 @@ def test_light_hysteresis_prevents_flickering() -> None:
     pet.apply(Event(EventKind.LIGHT_LEVEL, value=50))
     assert pet.state.asleep is False
 
+
+def test_needs_change_with_elapsed_time_not_event_count() -> None:
+    """A long elapsed period changes needs by a predictable amount."""
+
+    pet = Pet(PetState(hunger=20, energy=70, happiness=60))
+    pet.apply(Event(EventKind.TICK, value=2 * 60 * 60))
+    assert pet.state.hunger == 26
+    assert pet.state.energy == 69
+    assert pet.state.happiness == 59
+
+
+def test_sleep_and_wake_create_one_time_messages() -> None:
+    """Light transitions produce human-friendly messages once."""
+
+    pet = Pet(PetState(light_level=100))
+    pet.apply(Event(EventKind.LIGHT_LEVEL, value=5))
+    assert pet.consume_message() == "Good night!"
+    assert pet.consume_message() is None
+    pet.apply(Event(EventKind.LIGHT_LEVEL, value=80))
+    assert pet.consume_message() == "Good morning!"
+
+
+def test_prolonged_hunger_makes_pet_sick_but_not_dead() -> None:
+    """Neglect creates a recoverable sickness state."""
+
+    pet = Pet(PetState(hunger=95))
+    pet.apply(Event(EventKind.TICK, value=6 * 60 * 60))
+    assert pet.state.sick is True
+    pet.apply(Event(EventKind.FEED))
+    assert pet.state.sick is False

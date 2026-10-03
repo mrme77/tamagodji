@@ -19,6 +19,5 @@ class Event:
     """A normalized input from a sensor or interaction device."""
 
     kind: EventKind
-    value: int = 0
+    value: float = 0
     source: str = "system"
-
