@@ -73,9 +73,32 @@ python -m tamagodji --mode hardware \
   --room-port /dev/ttyACM1
 ```
 
+### Run automatically at boot
+
+The repository includes a `systemd` service configured for the current Pi user
+(`mrme77`) and the stable `/dev/serial/by-id/` paths for the two micro:bits. After
+pulling the repository on the Pi, install and start it with:
+
+```bash
+sudo cp deploy/tamagodji.service /etc/systemd/system/tamagodji.service
+sudo systemctl daemon-reload
+sudo systemctl enable tamagodji
+sudo systemctl start tamagodji
+sudo systemctl status tamagodji
+```
+
+View live application logs with:
+
+```bash
+sudo journalctl -u tamagodji -f
+```
+
+The service restarts the application after a failure and starts it again after a
+Pi reboot. The SQLite state remains in `.data/pet.db`.
+
 The micro:bit message format is documented in
-[`docs/microbit-protocol.md`](docs/microbit-protocol.md). A systemd service and web
-API will be added after the first hardware loop is verified.
+[`docs/microbit-protocol.md`](docs/microbit-protocol.md). A web API will be added
+after the first always-on hardware service is verified.
 
 Voice output is intentionally optional for now. The OLED displays the sleep and
 wake messages; a small powered speaker can be added later for spoken greetings.
