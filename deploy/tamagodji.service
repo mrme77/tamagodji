@@ -8,6 +8,7 @@ User=mrme77
 WorkingDirectory=/home/mrme77/tamagodji
 Environment=PYTHONUNBUFFERED=1
 Environment=TAMAGODJI_DB=/home/mrme77/tamagodji/.data/pet.db
+Environment=TAMAGODJI_AUDIO_DEVICE=plughw:CARD=Device,DEV=0
 Environment=TAMAGODJI_INTERACTION_PORT=/dev/serial/by-id/usb-ARM_BBC_micro:bit_CMSIS-DAP_9901000051774e45005c7003000000400000000097969901-if01
 Environment=TAMAGODJI_ROOM_PORT=/dev/serial/by-id/usb-Arm_BBC_micro:bit_CMSIS-DAP_990636020005282034df574e1252c27f000000006e052820-if01
 ExecStart=/home/mrme77/tamagodji/.venv/bin/python -m tamagodji --mode hardware
