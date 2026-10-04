@@ -1,6 +1,6 @@
 """Application orchestration shared by mock and hardware modes."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 import time
 
 from .events import Event, EventKind
@@ -12,18 +12,28 @@ from .storage import PetStore
 class TamagodjiApp:
     """Connect the pet, persistence, event sources, and display."""
 
-    def __init__(self, pet: Pet, store: PetStore, display: object) -> None:
+    def __init__(
+        self,
+        pet: Pet,
+        store: PetStore,
+        display: object,
+        temperature_reader: Callable[[], float | None] | None = None,
+    ) -> None:
         """Create an application controller."""
 
         self.pet = pet
         self.store = store
         self.display = display
+        self.temperature_reader = temperature_reader
 
     def render(self, message: str | None = None) -> None:
         """Persist and render the current state."""
 
         self.store.save(self.pet.state)
-        self.display.show(frame_for_state(self.pet.state, message=message))
+        temperature = self.temperature_reader() if self.temperature_reader else None
+        self.display.show(
+            frame_for_state(self.pet.state, message=message, temperature_c=temperature)
+        )
 
     def _advance_time(self) -> None:
         """Apply need decay since the last persisted state update."""

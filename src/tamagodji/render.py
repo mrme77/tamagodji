@@ -3,7 +3,11 @@
 from .pet import PetState
 
 
-def frame_for_state(state: PetState, message: str | None = None) -> str:
+def frame_for_state(
+    state: PetState,
+    message: str | None = None,
+    temperature_c: float | None = None,
+) -> str:
     """Create a compact text frame for a terminal or tiny OLED."""
 
     face = {
@@ -15,11 +19,20 @@ def frame_for_state(state: PetState, message: str | None = None) -> str:
         "sick": "(x_x) !",
         "content": "(^_^) .",
     }[state.mood]
+    temperature_line = f"Pi: {temperature_c:.1f}C" if temperature_c is not None else None
     if message:
-        return f"{message}\n{face}\n{state.mood}"
+        lines = [message, face, state.mood]
+        if temperature_line:
+            lines.append(temperature_line)
+        return "\n".join(lines)
+    lines = [
+        face,
+        f"mood: {state.mood}",
+        f"full: {100 - state.hunger:3d}%  joy: {state.happiness:3d}%",
+        f"energy: {state.energy:3d}%  light: {state.light_level:3d}%",
+    ]
+    if temperature_line:
+        lines.append(temperature_line)
     return (
-        f"{face}\n"
-        f"mood: {state.mood}\n"
-        f"full: {100 - state.hunger:3d}%  joy: {state.happiness:3d}%\n"
-        f"energy: {state.energy:3d}%  light: {state.light_level:3d}%"
+        "\n".join(lines)
     )

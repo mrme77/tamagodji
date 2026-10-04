@@ -93,10 +93,15 @@ def main() -> None:
     parser.add_argument("--interaction-port", default=os.getenv("TAMAGODJI_INTERACTION_PORT"))
     parser.add_argument("--room-port", default=os.getenv("TAMAGODJI_ROOM_PORT"))
     args = parser.parse_args()
+    temperature_reader = None
+    if args.mode == "hardware":
+        from .hardware.temperature import read_cpu_temperature
+
+        temperature_reader = read_cpu_temperature
     store = PetStore(Path(args.db))
     pet = Pet(store.load())
     display = MockDisplay()
-    app = TamagodjiApp(pet, store, display)
+    app = TamagodjiApp(pet, store, display, temperature_reader=temperature_reader)
     if args.mode == "mock":
         _run_mock(app, args.once, args.demo)
         return
@@ -107,4 +112,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
