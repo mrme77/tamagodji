@@ -21,7 +21,7 @@ class AlsaMicrophone:
         duration = max(1, math.ceil(self.seconds))
         command = [
             "arecord", "-q", "-f", "S16_LE", "-c", "1", "-r", "16000",
-            "-d", str(duration), "-t", "raw",
+            "-d", str(duration), "-t", "raw", "-",
         ]
         try:
             result = subprocess.run(command, check=True, capture_output=True, timeout=3)
