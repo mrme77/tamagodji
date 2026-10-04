@@ -33,7 +33,8 @@ The pet's needs use persisted elapsed time rather than loop count. Fullness fall
 slowly while awake and more slowly while asleep. Darkness and daylight create
 one-time `Good night!` and `Good morning!` messages. Prolonged hunger can make the
 pet sick, but feeding it can recover the pet; there is no permanent death in this
-version.
+version. In hardware mode, the OLED also shows the Raspberry Pi CPU temperature;
+this is a system temperature, not the room temperature.
 
 Run tests with:
 
@@ -94,7 +95,9 @@ sudo journalctl -u tamagodji -f
 ```
 
 The service restarts the application after a failure and starts it again after a
-Pi reboot. The SQLite state remains in `.data/pet.db`.
+Pi reboot. The SQLite state remains in `.data/pet.db`. The service also selects the
+USB microphone explicitly so ALSA's default device does not change its behavior
+after a reboot.
 
 The micro:bit message format is documented in
 [`docs/microbit-protocol.md`](docs/microbit-protocol.md). A web API will be added
