@@ -1,6 +1,7 @@
 """Local microphone level adapter using the Raspberry Pi ALSA utility."""
 
 import math
+import os
 import struct
 import subprocess
 
@@ -19,10 +20,14 @@ class AlsaMicrophone:
         """Capture one sample and return a sound-level event."""
 
         duration = max(1, math.ceil(self.seconds))
-        command = [
-            "arecord", "-q", "-f", "S16_LE", "-c", "1", "-r", "16000",
-            "-d", str(duration), "-t", "raw", "-",
-        ]
+        command = ["arecord", "-q"]
+        device = os.getenv("TAMAGODJI_AUDIO_DEVICE")
+        if device:
+            command.extend(["-D", device])
+        command.extend([
+            "-f", "S16_LE", "-c", "1", "-r", "16000",
+            "-d", str(duration), "-t", "raw", "/dev/stdout",
+        ])
         try:
             result = subprocess.run(command, check=True, capture_output=True, timeout=3)
         except (OSError, subprocess.SubprocessError) as error:
