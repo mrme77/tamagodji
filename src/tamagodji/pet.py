@@ -103,10 +103,10 @@ class Pet:
         if self.state.asleep and self.state.light_level > self.WAKE_THRESHOLD:
             self.state.asleep = False
             self.state.happiness = _clamp(self.state.happiness + 4)
-            self._message = "Good morning!"
+            self._message = "Good morning, fellas! I am awake!"
         elif not self.state.asleep and self.state.light_level < self.DARK_THRESHOLD:
             self.state.asleep = True
-            self._message = "Good night!"
+            self._message = "Good night, fellas! I am going to sleep!"
 
     def _apply_feed(self) -> None:
         """Feed the pet when it is awake."""

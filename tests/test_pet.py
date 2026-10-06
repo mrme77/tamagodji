@@ -48,10 +48,10 @@ def test_sleep_and_wake_create_one_time_messages() -> None:
 
     pet = Pet(PetState(light_level=100))
     pet.apply(Event(EventKind.LIGHT_LEVEL, value=5))
-    assert pet.consume_message() == "Good night!"
+    assert pet.consume_message() == "Good night, fellas! I am going to sleep!"
     assert pet.consume_message() is None
     pet.apply(Event(EventKind.LIGHT_LEVEL, value=80))
-    assert pet.consume_message() == "Good morning!"
+    assert pet.consume_message() == "Good morning, fellas! I am awake!"
 
 
 def test_prolonged_hunger_makes_pet_sick_but_not_dead() -> None:

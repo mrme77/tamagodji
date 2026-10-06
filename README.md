@@ -97,14 +97,21 @@ sudo journalctl -u tamagodji -f
 The service restarts the application after a failure and starts it again after a
 Pi reboot. The SQLite state remains in `.data/pet.db`. The service also selects the
 USB microphone explicitly so ALSA's default device does not change its behavior
-after a reboot.
+after a reboot. Install offline voice output on the Pi with:
+
+```bash
+sudo apt update
+sudo apt install espeak-ng
+```
 
 The micro:bit message format is documented in
 [`docs/microbit-protocol.md`](docs/microbit-protocol.md). A web API will be added
 after the first always-on hardware service is verified.
 
-Voice output is intentionally optional for now. The OLED displays the sleep and
-wake messages; a small powered speaker can be added later for spoken greetings.
+In hardware mode, the Pi speaks `Good morning, fellas! I am awake!` and `Good
+night, fellas! I am going to sleep!` through the configured audio output. Voice
+errors are logged without stopping the OLED or pet service. A powered speaker or
+amplifier is required for the Pi's line-level 3.5 mm output.
 
 ## Flash the micro:bits
 
