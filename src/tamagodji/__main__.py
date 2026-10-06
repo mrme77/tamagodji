@@ -94,14 +94,23 @@ def main() -> None:
     parser.add_argument("--room-port", default=os.getenv("TAMAGODJI_ROOM_PORT"))
     args = parser.parse_args()
     temperature_reader = None
+    voice = None
     if args.mode == "hardware":
         from .hardware.temperature import read_cpu_temperature
+        from .hardware.voice import EspeakVoice
 
         temperature_reader = read_cpu_temperature
+        voice = EspeakVoice().speak
     store = PetStore(Path(args.db))
     pet = Pet(store.load())
     display = MockDisplay()
-    app = TamagodjiApp(pet, store, display, temperature_reader=temperature_reader)
+    app = TamagodjiApp(
+        pet,
+        store,
+        display,
+        temperature_reader=temperature_reader,
+        voice=voice,
+    )
     if args.mode == "mock":
         _run_mock(app, args.once, args.demo)
         return

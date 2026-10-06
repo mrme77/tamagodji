@@ -18,6 +18,7 @@ class TamagodjiApp:
         store: PetStore,
         display: object,
         temperature_reader: Callable[[], float | None] | None = None,
+        voice: Callable[[str], None] | None = None,
     ) -> None:
         """Create an application controller."""
 
@@ -25,6 +26,7 @@ class TamagodjiApp:
         self.store = store
         self.display = display
         self.temperature_reader = temperature_reader
+        self.voice = voice
 
     def render(self, message: str | None = None) -> None:
         """Persist and render the current state."""
@@ -49,7 +51,10 @@ class TamagodjiApp:
         self._advance_time()
         if event.kind is not EventKind.TICK:
             self.pet.apply(event)
-        self.render(message=self.pet.consume_message())
+        message = self.pet.consume_message()
+        if message and self.voice:
+            self.voice(message)
+        self.render(message=message)
 
     def handle_many(self, events: Iterable[Event]) -> None:
         """Apply a sequence of events and render after each one."""

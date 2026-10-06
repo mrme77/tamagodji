@@ -1,5 +1,7 @@
 """Small renderers shared by the terminal and OLED displays."""
 
+from textwrap import wrap
+
 from .pet import PetState
 
 
@@ -21,7 +23,7 @@ def frame_for_state(
     }[state.mood]
     temperature_line = f"Pi: {temperature_c:.1f}C" if temperature_c is not None else None
     if message:
-        lines = [message, face, state.mood]
+        lines = wrap(message, width=20) + [face, state.mood]
         if temperature_line:
             lines.append(temperature_line)
         return "\n".join(lines)
