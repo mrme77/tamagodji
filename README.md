@@ -113,6 +113,10 @@ night, fellas! I am going to sleep!` through the configured audio output. Voice
 errors are logged without stopping the OLED or pet service. A powered speaker or
 amplifier is required for the Pi's line-level 3.5 mm output.
 
+USB microphone input is optional. The boot service currently disables it so a
+problematic microphone cannot stop the pet, display, or voice greetings. Re-enable
+it later with `TAMAGODJI_MICROPHONE_ENABLED=1` after testing the USB audio device.
+
 ## Flash the micro:bits
 
 The two MicroPython programs are in [`microbit/`](microbit/):

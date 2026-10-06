@@ -60,7 +60,13 @@ def _run_mock(app: TamagodjiApp, once: bool, demo: bool) -> None:
         app.handle(event)
 
 
-def _run_hardware(app: TamagodjiApp, interaction_port: str, room_port: str, once: bool) -> None:
+def _run_hardware(
+    app: TamagodjiApp,
+    interaction_port: str,
+    room_port: str,
+    once: bool,
+    microphone_enabled: bool,
+) -> None:
     """Run the Raspberry Pi hardware loop."""
 
     from .display.ssd1306 import SSD1306Display
@@ -70,12 +76,13 @@ def _run_hardware(app: TamagodjiApp, interaction_port: str, room_port: str, once
     app.display = SSD1306Display()
     interaction = MicrobitSerial(interaction_port, "interaction")
     room = MicrobitSerial(room_port, "room")
-    microphone = AlsaMicrophone()
+    microphone = AlsaMicrophone() if microphone_enabled else None
     app.render()
     while True:
         app.handle_many(interaction.poll())
         app.handle_many(room.poll())
-        app.handle(microphone.read_event())
+        if microphone:
+            app.handle(microphone.read_event())
         app.tick()
         if once:
             return
@@ -92,6 +99,12 @@ def main() -> None:
     parser.add_argument("--db", default=os.getenv("TAMAGODJI_DB", ".data/pet.db"))
     parser.add_argument("--interaction-port", default=os.getenv("TAMAGODJI_INTERACTION_PORT"))
     parser.add_argument("--room-port", default=os.getenv("TAMAGODJI_ROOM_PORT"))
+    parser.add_argument(
+        "--microphone",
+        action=argparse.BooleanOptionalAction,
+        default=os.getenv("TAMAGODJI_MICROPHONE_ENABLED", "1") != "0",
+        help="Enable USB microphone input in hardware mode",
+    )
     args = parser.parse_args()
     temperature_reader = None
     voice = None
@@ -116,7 +129,7 @@ def main() -> None:
         return
     if not args.interaction_port or not args.room_port:
         parser.error("hardware mode requires --interaction-port and --room-port")
-    _run_hardware(app, args.interaction_port, args.room_port, args.once)
+    _run_hardware(app, args.interaction_port, args.room_port, args.once, args.microphone)
 
 
 if __name__ == "__main__":
