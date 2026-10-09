@@ -26,7 +26,7 @@ For interactive development:
 python -m tamagodji --mode mock
 ```
 
-Available commands are `feed`, `play`, `light 0-100`, `sound 0-100`, `tick`, and
+Available commands are `feed`, `pet`, `light 0-100`, `sound 0-100`, `tick`, and
 `quit`.
 
 The pet's needs use persisted elapsed time rather than loop count. Fullness falls

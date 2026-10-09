@@ -18,7 +18,7 @@ def _event_from_command(command: str) -> Event | None:
     name, _, raw_value = command.strip().lower().partition(" ")
     if name == "feed":
         return Event(EventKind.FEED, source="keyboard")
-    if name == "play":
+    if name in {"play", "pet"}:
         return Event(EventKind.PLAY, source="keyboard")
     if name in {"light", "sound"}:
         try:
@@ -48,7 +48,7 @@ def _run_mock(app: TamagodjiApp, once: bool, demo: bool) -> None:
             Event(EventKind.LIGHT_LEVEL, value=80, source="demo"),
         ])
         return
-    print("Commands: feed, play, light 0-100, sound 0-100, tick, quit")
+    print("Commands: feed, pet, light 0-100, sound 0-100, tick, quit")
     while True:
         command = input("> ").strip()
         if command in {"quit", "exit"}:
