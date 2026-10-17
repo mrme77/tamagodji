@@ -105,8 +105,8 @@ sudo apt install espeak-ng
 ```
 
 The micro:bit message format is documented in
-[`docs/microbit-protocol.md`](docs/microbit-protocol.md). A web API will be added
-after the first always-on hardware service is verified.
+[`docs/microbit-protocol.md`](docs/microbit-protocol.md). The local API and its
+website/tunnel guidance are documented below.
 
 In hardware mode, the Pi speaks `Good morning, fellas! I am awake!` and `Good
 night, fellas! I am going to sleep!` through the configured audio output. Voice
@@ -116,6 +116,70 @@ amplifier is required for the Pi's line-level 3.5 mm output.
 USB microphone input is optional. The boot service currently disables it so a
 problematic microphone cannot stop the pet, display, or voice greetings. Re-enable
 it later with `TAMAGODJI_MICROPHONE_ENABLED=1` after testing the USB audio device.
+
+## Local API and website display
+
+Hardware mode starts a small JSON API on `127.0.0.1:8080`. It runs inside the
+same process as the pet, so the API cannot accidentally create a second SQLite
+writer. The API reads the live state and queues actions for the normal pet loop.
+
+Check it from the Pi with:
+
+```bash
+curl http://127.0.0.1:8080/api/health
+curl http://127.0.0.1:8080/api/pet
+```
+
+The state response includes the pet meters, mood, CPU temperature, and the text
+frame currently suitable for the OLED. Website actions use:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/interactions \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"feed"}'
+```
+
+The accepted actions are `feed` and `play`. The API initially binds only to the
+Pi itself. For a public website, put it behind a Cloudflare Tunnel and set a
+long random `TAMAGODJI_API_TOKEN` in the Pi's private `.env` file. When a token is
+configured, write requests must send `Authorization: Bearer <token>`. Keep the
+website origin in `TAMAGODJI_CORS_ORIGIN`, for example
+`https://pasqualesalomone.com`. Do not put the token in public browser code; a
+public website should normally call a small server-side proxy for write actions.
+
+## OpenRouter LLM brain
+
+The deterministic pet state machine remains authoritative for sleep, light,
+food, energy, sickness, and persistence. OpenRouter adds personality and chat;
+it does not receive permission to write the database or invent hardware commands.
+The Pi sends the current state and a user message to the OpenRouter chat
+completions endpoint. The expected result is a short reply plus one optional
+validated action: `FEED`, `PLAY`, or `NONE`.
+
+Configure it only on the Pi, never in website JavaScript or Git:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+nano .env
+```
+
+Set `OPENROUTER_API_KEY` and, optionally, `OPENROUTER_MODEL`. The service loads
+`.env` at boot. Without a key, `/api/chat` returns a clear not-configured
+response and the rest of the pet continues working offline. With a key, a chat
+request looks like:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"I am here to take care of you"}'
+```
+
+If `TAMAGODJI_API_TOKEN` is configured, add the bearer header to that request as
+well. The API implementation uses OpenRouter's OpenAI-compatible
+`/api/v1/chat/completions` endpoint. For a website, the safest first version is
+read-only polling of `/api/pet` every 2–5 seconds; add authenticated actions
+through a server-side website route after the display is working.
 
 ## Flash the micro:bits
 
