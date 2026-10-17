@@ -7,7 +7,7 @@ the Raspberry Pi by USB.
 
 | Micro:bit | File | Purpose |
 |---|---|---|
-| Interaction controller | `interaction.py` | A = feed, B = play, shake = play |
+| Interaction controller | `interaction.py` | A = feed, B = pet, shake = pet |
 | Room sensor | `room_sensor.py` | Measures room light using the LED matrix |
 
 ## Flashing

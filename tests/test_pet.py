@@ -11,6 +11,32 @@ def test_feed_reduces_hunger_and_increases_happiness() -> None:
     pet.apply(Event(EventKind.FEED))
     assert pet.state.hunger == 42
     assert pet.state.happiness == 46
+    assert pet.consume_message() in Pet.FEED_MESSAGES
+
+
+def test_feed_messages_do_not_repeat_immediately(monkeypatch) -> None:
+    """Repeated feeding uses a different phrase when alternatives exist."""
+
+    monkeypatch.setattr("tamagodji.pet.random.choice", lambda choices: choices[0])
+    pet = Pet(PetState(hunger=70))
+
+    pet.apply(Event(EventKind.FEED))
+    first_message = pet.consume_message()
+    pet.apply(Event(EventKind.FEED))
+    second_message = pet.consume_message()
+
+    assert first_message in Pet.FEED_MESSAGES
+    assert second_message in Pet.FEED_MESSAGES
+    assert second_message != first_message
+
+
+def test_petting_creates_a_random_pet_message() -> None:
+    """The second interaction produces a petting response."""
+
+    pet = Pet(PetState())
+    pet.apply(Event(EventKind.PLAY))
+
+    assert pet.consume_message() in Pet.PET_MESSAGES
 
 
 def test_darkness_puts_pet_to_sleep_and_night_noise_is_negative() -> None:

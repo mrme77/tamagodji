@@ -1,6 +1,7 @@
 """The deterministic Tamagodji state machine."""
 
 from dataclasses import asdict, dataclass, field
+import random
 import time
 from typing import Any
 
@@ -65,6 +66,21 @@ class PetState:
 class Pet:
     """Apply normalized events to a pet state."""
 
+    FEED_MESSAGES = (
+        "Thank you for feeding me!",
+        "Yum! That was delicious!",
+        "You are taking such good care of me!",
+        "A tasty treat! Thank you!",
+        "My tummy is happy now!",
+    )
+    PET_MESSAGES = (
+        "That feels nice!",
+        "I love being petted!",
+        "Aww, thank you for the cuddles!",
+        "More pets, please!",
+        "You made me feel so loved!",
+    )
+
     DARK_THRESHOLD = 20
     WAKE_THRESHOLD = 35
     AWAKE_HUNGER_INTERVAL = 20 * 60
@@ -79,6 +95,7 @@ class Pet:
 
         self.state = state or PetState()
         self._message: str | None = None
+        self._last_interaction_message: str | None = None
 
     def apply(self, event: Event) -> PetState:
         """Apply one event and return the updated state."""
@@ -114,17 +131,27 @@ class Pet:
         if not self.state.asleep:
             self.state.hunger = _clamp(self.state.hunger - 28)
             self.state.happiness = _clamp(self.state.happiness + 6)
+            self._message = self._choose_interaction_message(self.FEED_MESSAGES)
             if self.state.sick and self.state.hunger <= 75:
                 self.state.sick = False
                 self.state.neglect_seconds = 0.0
 
     def _apply_play(self) -> None:
-        """Play with the pet when it is awake."""
+        """Pet the pet when it is awake, preserving the PLAY event protocol."""
 
         if not self.state.asleep:
             self.state.energy = _clamp(self.state.energy - 8)
             self.state.hunger = _clamp(self.state.hunger + 5)
             self.state.happiness = _clamp(self.state.happiness + 14)
+            self._message = self._choose_interaction_message(self.PET_MESSAGES)
+
+    def _choose_interaction_message(self, messages: tuple[str, ...]) -> str:
+        """Choose an interaction message without repeating the previous one."""
+
+        choices = [message for message in messages if message != self._last_interaction_message]
+        message = random.choice(choices or list(messages))
+        self._last_interaction_message = message
+        return message
 
     def _apply_sound(self, value: int) -> None:
         """React positively to daytime sound and negatively when asleep."""
