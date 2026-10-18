@@ -30,6 +30,8 @@ class PetState:
     energy_progress: float = 0.0
     happiness_progress: float = 0.0
     neglect_seconds: float = 0.0
+    web_feed_count: int = 0
+    web_play_count: int = 0
 
     @property
     def mood(self) -> str:
@@ -101,6 +103,11 @@ class Pet:
         """Apply one event and return the updated state."""
 
         self.state.last_event = event.kind.value
+        if event.source == "web":
+            if event.kind is EventKind.FEED:
+                self.state.web_feed_count += 1
+            elif event.kind is EventKind.PLAY:
+                self.state.web_play_count += 1
         if event.kind is EventKind.LIGHT_LEVEL:
             self._apply_light(event.value)
         elif event.kind is EventKind.FEED:

@@ -88,3 +88,15 @@ def test_prolonged_hunger_makes_pet_sick_but_not_dead() -> None:
     assert pet.state.sick is True
     pet.apply(Event(EventKind.FEED))
     assert pet.state.sick is False
+
+
+def test_web_interactions_store_only_aggregate_counts() -> None:
+    """Website events count without recording a visitor identity or message."""
+
+    pet = Pet(PetState())
+    pet.apply(Event(EventKind.FEED, source="web"))
+    pet.apply(Event(EventKind.PLAY, source="web"))
+    pet.apply(Event(EventKind.FEED, source="microbit"))
+
+    assert pet.state.web_feed_count == 1
+    assert pet.state.web_play_count == 1
