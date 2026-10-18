@@ -4,6 +4,15 @@ After=local-fs.target
 
 [Service]
 Type=simple
+NoNewPrivileges=true
+UMask=0077
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+# Keep device access: the OLED, serial controllers and audio use /dev.
 User=mrme77
 WorkingDirectory=/home/mrme77/tamagodji
 EnvironmentFile=-/home/mrme77/tamagodji/.env

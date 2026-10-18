@@ -14,7 +14,7 @@ def test_api_returns_state_and_queues_interaction() -> None:
     server = ApiServer(
         lambda: {"mood": "happy", "fullness": 80},
         events.put,
-        ApiConfig(port=0),
+        ApiConfig(port=0, api_token="test-token"),
     )
     server.start()
     assert server.address is not None
@@ -26,7 +26,9 @@ def test_api_returns_state_and_queues_interaction() -> None:
         assert json.loads(response.read()) == {"mood": "happy", "fullness": 80}
 
         body = json.dumps({"action": "feed"})
-        connection.request("POST", "/api/interactions", body=body, headers={"Content-Type": "application/json"})
+        connection.request("POST", "/api/interactions", body=body, headers={
+            "Content-Type": "application/json", "Authorization": "Bearer test-token",
+        })
         response = connection.getresponse()
         assert response.status == 202
         assert events.get().kind.value == "feed"

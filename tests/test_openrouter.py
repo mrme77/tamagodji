@@ -3,6 +3,7 @@
 import json
 from io import BytesIO
 from unittest.mock import patch
+import pytest
 
 from tamagodji.llm.openrouter import OpenRouterBrain
 
@@ -37,3 +38,19 @@ def test_openrouter_plain_text_has_no_action() -> None:
     result = OpenRouterBrain._parse_reply("Hello from Tamagodji")
     assert result.reply == "Hello from Tamagodji"
     assert result.action is None
+
+
+def test_openrouter_rejects_oversized_response() -> None:
+    """A remote response cannot be read into unbounded memory."""
+
+    with patch("tamagodji.llm.openrouter.urlopen", return_value=FakeResponse(b"x" * 65537)):
+        with pytest.raises(RuntimeError, match="size limit"):
+            OpenRouterBrain("test-key").respond("Hi", {})
+
+
+def test_openrouter_wraps_invalid_json_response() -> None:
+    """Invalid JSON remains a controlled upstream failure, not a handler crash."""
+
+    with patch("tamagodji.llm.openrouter.urlopen", return_value=FakeResponse(b"not-json")):
+        with pytest.raises(RuntimeError, match="request failed"):
+            OpenRouterBrain("test-key").respond("Hi", {})

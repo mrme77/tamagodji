@@ -20,7 +20,9 @@ class EspeakVoice:
 
         try:
             subprocess.run(
-                ["espeak-ng", "-v", self.language, message],
+                ["espeak-ng", "-v", self.language, "--stdin"],
+                input=message[:180],
+                text=True,
                 check=True,
                 timeout=10,
             )

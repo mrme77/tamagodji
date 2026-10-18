@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from .pet import PetState
@@ -16,7 +17,7 @@ class PetStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with sqlite3.connect(self.path) as connection:
+            with closing(sqlite3.connect(self.path)) as connection, connection:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS pet_state "
                     "(id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL)"
@@ -28,7 +29,7 @@ class PetStore:
         """Load the saved pet, or return None for a new installation."""
 
         try:
-            with sqlite3.connect(self.path) as connection:
+            with closing(sqlite3.connect(self.path)) as connection:
                 row = connection.execute("SELECT payload FROM pet_state WHERE id = 1").fetchone()
         except sqlite3.Error as error:
             raise RuntimeError(f"Could not read pet database: {self.path}") from error
@@ -41,7 +42,7 @@ class PetStore:
 
         payload = json.dumps(state.to_dict())
         try:
-            with sqlite3.connect(self.path) as connection:
+            with closing(sqlite3.connect(self.path)) as connection, connection:
                 connection.execute(
                     "INSERT INTO pet_state (id, payload) VALUES (1, ?) "
                     "ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",

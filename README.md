@@ -43,6 +43,9 @@ python -m pip install -r requirements-dev.txt
 python -m pytest
 ```
 
+Pull requests run the same tests on Python 3.10, 3.11, and 3.14 via GitHub Actions.
+The tests use mocked hardware and local HTTP servers, never the live Pi.
+
 ## Raspberry Pi setup
 
 Clone the repository on the Pi, enable I²C, and install the optional hardware
@@ -120,8 +123,9 @@ it later with `TAMAGODJI_MICROPHONE_ENABLED=1` after testing the USB audio devic
 ## Local API and website display
 
 Hardware mode starts a small JSON API on `127.0.0.1:8080`. It runs inside the
-same process as the pet, so the API cannot accidentally create a second SQLite
-writer. The API reads the live state and queues actions for the normal pet loop.
+same process as the pet. Only the hardware loop advances and persists state;
+API reads return its most recent state without SQLite writes or sensor reads.
+Commands use a bounded queue, with a small processing budget per loop iteration.
 
 Check it from the Pi with:
 
@@ -137,19 +141,42 @@ The OLED frame includes the Pi's current time in 24-hour format. Website actions
 ```bash
 curl -X POST http://127.0.0.1:8080/api/interactions \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TAMAGODJI_API_TOKEN" \
   -d '{"action":"feed"}'
 ```
 
 The accepted actions are `feed` and `play`. Website actions are stored only as
-anonymous aggregate counters (`feed`, `play`, and `total`); the service does not
-store visitor names, messages, IP addresses, cookies, or account identifiers.
+anonymous aggregate counters (`feed`, `play`, and `total`). Sleeping actions are
+rejected with HTTP 409; an action queued just before sleep is ignored and not
+counted. These counters do not store visitor identities or message contents.
+Hosting, tunnel, and model providers have their own logging/data policies; this
+is not a claim that the complete website is automatically GDPR compliant.
 The API initially binds only to the
 Pi itself. For a public website, put it behind a Cloudflare Tunnel and set a
-long random `TAMAGODJI_API_TOKEN` in the Pi's private `.env` file. When a token is
-configured, write requests must send `Authorization: Bearer <token>`. Keep the
+long random `TAMAGODJI_API_TOKEN` in the Pi's private `.env` file. All write
+requests, including localhost tests, must send `Authorization: Bearer <token>`.
+If the token is missing or blank, writes are disabled (HTTP 503), while the
+display and health endpoints remain available. A wrong/missing bearer header
+returns HTTP 401. Use a randomly generated token of at least 32 bytes. Keep the
 website origin in `TAMAGODJI_CORS_ORIGIN`, for example
 `https://pasqualesalomone.com`. Do not put the token in public browser code; a
 public website should normally call a small server-side proxy for write actions.
+
+The examples assume the token is already in your terminal environment; systemd's
+environment is not automatically inherited by an SSH shell. Never paste the
+actual token into Git, screenshots, browser code, or chat messages.
+
+The Pi enforces a global five-second action cooldown, a one-minute chat cooldown,
+one concurrent model call, and a bounded 16-command queue. Excess requests return
+429 (cooldown) or 503 (busy), with `Retry-After`. Reads allow a burst of 20, then
+10 per second across all visitors. These limits do not identify visitors and
+reset on service restart. The website should show the returned error and avoid
+automatic retries for commands. `202 accepted` means queued, not yet applied.
+Audio runs on one worker with two waiting announcements; excess announcements
+are skipped with a warning, without dropping the underlying pet action.
+
+See [the security review and deployment checklist](docs/security-review.md) for
+the trust boundaries, remaining risks, and safe rollout instructions.
 
 When the Pi is powered off, both this API and the Cloudflare Tunnel origin are
 offline. The installed `cloudflared` service starts again at boot when the Pi is
@@ -169,12 +196,14 @@ validated action: `FEED`, `PLAY`, or `NONE`.
 Configure it only on the Pi, never in website JavaScript or Git:
 
 ```bash
-cp .env.example .env
+cp -n .env.example .env
 chmod 600 .env
 nano .env
 ```
 
-Set `OPENROUTER_API_KEY` and, optionally, `OPENROUTER_MODEL`. The service loads
+Do not overwrite an existing `.env`. Uncomment and set `OPENROUTER_API_KEY`,
+`TAMAGODJI_API_TOKEN` (unless already supplied by a service override), and,
+optionally, `OPENROUTER_MODEL`. The service loads
 `.env` at boot. Without a key, `/api/chat` returns a clear not-configured
 response and the rest of the pet continues working offline. With a key, a chat
 request looks like:
@@ -182,11 +211,13 @@ request looks like:
 ```bash
 curl -X POST http://127.0.0.1:8080/api/chat \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TAMAGODJI_API_TOKEN" \
   -d '{"message":"I am here to take care of you"}'
 ```
 
-If `TAMAGODJI_API_TOKEN` is configured, add the bearer header to that request as
-well. The API implementation uses OpenRouter's OpenAI-compatible
+Both the bearer token and an OpenRouter key are required for chat. Set a spending
+limit on the provider key as well: request throttling is not a monetary budget.
+The API implementation uses OpenRouter's OpenAI-compatible
 `/api/v1/chat/completions` endpoint. For a website, the safest first version is
 read-only polling of `/api/pet` every 2–5 seconds; add authenticated actions
 through a server-side website route after the display is working.
