@@ -100,4 +100,9 @@ class TamagodjiApp:
                 "last_updated": state.last_updated,
                 "temperature_c": temperature,
                 "display": frame_for_state(state, temperature_c=temperature),
+                "interaction_counts": {
+                    "feed": state.web_feed_count,
+                    "play": state.web_play_count,
+                    "total": state.web_feed_count + state.web_play_count,
+                },
             }

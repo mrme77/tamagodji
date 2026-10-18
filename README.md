@@ -130,8 +130,9 @@ curl http://127.0.0.1:8080/api/health
 curl http://127.0.0.1:8080/api/pet
 ```
 
-The state response includes the pet meters, mood, CPU temperature, and the text
-frame currently suitable for the OLED. Website actions use:
+The state response includes the pet meters, mood, CPU temperature, aggregate
+website interaction counts, and the text frame currently suitable for the OLED.
+The OLED frame includes the Pi's current time in 24-hour format. Website actions use:
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/interactions \
@@ -139,13 +140,22 @@ curl -X POST http://127.0.0.1:8080/api/interactions \
   -d '{"action":"feed"}'
 ```
 
-The accepted actions are `feed` and `play`. The API initially binds only to the
+The accepted actions are `feed` and `play`. Website actions are stored only as
+anonymous aggregate counters (`feed`, `play`, and `total`); the service does not
+store visitor names, messages, IP addresses, cookies, or account identifiers.
+The API initially binds only to the
 Pi itself. For a public website, put it behind a Cloudflare Tunnel and set a
 long random `TAMAGODJI_API_TOKEN` in the Pi's private `.env` file. When a token is
 configured, write requests must send `Authorization: Bearer <token>`. Keep the
 website origin in `TAMAGODJI_CORS_ORIGIN`, for example
 `https://pasqualesalomone.com`. Do not put the token in public browser code; a
 public website should normally call a small server-side proxy for write actions.
+
+When the Pi is powered off, both this API and the Cloudflare Tunnel origin are
+offline. The installed `cloudflared` service starts again at boot when the Pi is
+powered on. Cloudflare Tunnel uses outbound connections, so the Pi does not need
+an inbound router port opened; the website still needs the API token configured
+in its server-side proxy before public write actions are enabled.
 
 ## OpenRouter LLM brain
 

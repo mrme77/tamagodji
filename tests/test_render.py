@@ -9,6 +9,7 @@ def test_frame_includes_pi_temperature_when_available() -> None:
 
     frame = frame_for_state(PetState(), temperature_c=37.6)
     assert "Pi: 37.6C" in frame
+    assert "time: " in frame
 
 
 def test_frame_works_without_temperature() -> None:
