@@ -4,6 +4,17 @@ from tamagodji.events import Event, EventKind
 from tamagodji.pet import Pet, PetState
 
 
+def test_sleeping_web_actions_do_not_inflate_aggregate_counts() -> None:
+    """A command queued before sleep must not count as a completed interaction."""
+
+    pet = Pet(PetState(asleep=True, hunger=70))
+    pet.apply(Event(EventKind.FEED, source="web"))
+    pet.apply(Event(EventKind.PLAY, source="web"))
+    assert pet.state.web_feed_count == 0
+    assert pet.state.web_play_count == 0
+    assert pet.state.hunger == 70
+
+
 def test_feed_reduces_hunger_and_increases_happiness() -> None:
     """Feeding an awake pet improves its two relevant meters."""
 

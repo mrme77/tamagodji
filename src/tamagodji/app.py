@@ -29,15 +29,16 @@ class TamagodjiApp:
         self.temperature_reader = temperature_reader
         self.voice = voice
         self._lock = threading.RLock()
+        self._temperature: float | None = None
 
     def render(self, message: str | None = None) -> None:
         """Persist and render the current state."""
 
         with self._lock:
             self.store.save(self.pet.state)
-            temperature = self.temperature_reader() if self.temperature_reader else None
+            self._temperature = self.temperature_reader() if self.temperature_reader else None
             self.display.show(
-                frame_for_state(self.pet.state, message=message, temperature_c=temperature)
+                frame_for_state(self.pet.state, message=message, temperature_c=self._temperature)
             )
 
     def _advance_time(self) -> None:
@@ -56,9 +57,10 @@ class TamagodjiApp:
             if event.kind is not EventKind.TICK:
                 self.pet.apply(event)
             message = self.pet.consume_message()
-            if message and self.voice:
-                self.voice(message)
             self.render(message=message)
+        # External audio must never hold the state lock used by HTTP readers.
+        if message and self.voice:
+            self.voice(message)
 
     def handle_many(self, events: Iterable[Event]) -> None:
         """Apply a sequence of events and render after each one."""
@@ -75,17 +77,14 @@ class TamagodjiApp:
         """Speak and render a message queued by an external interface."""
 
         with self._lock:
-            if self.voice:
-                self.voice(message)
             self.render(message=message)
+        if self.voice:
+            self.voice(message)
 
     def snapshot(self) -> dict[str, object]:
-        """Return a current, JSON-friendly view for the local web API."""
+        """Read the latest loop state without advancing time or touching SQLite."""
 
         with self._lock:
-            self._advance_time()
-            self.store.save(self.pet.state)
-            temperature = self.temperature_reader() if self.temperature_reader else None
             state = self.pet.state
             return {
                 "mood": state.mood,
@@ -98,8 +97,8 @@ class TamagodjiApp:
                 "sick": state.sick,
                 "last_event": state.last_event,
                 "last_updated": state.last_updated,
-                "temperature_c": temperature,
-                "display": frame_for_state(state, temperature_c=temperature),
+                "temperature_c": self._temperature,
+                "display": frame_for_state(state, temperature_c=self._temperature),
                 "interaction_counts": {
                     "feed": state.web_feed_count,
                     "play": state.web_play_count,

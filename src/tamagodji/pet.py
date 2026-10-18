@@ -103,7 +103,7 @@ class Pet:
         """Apply one event and return the updated state."""
 
         self.state.last_event = event.kind.value
-        if event.source == "web":
+        if event.source == "web" and not self.state.asleep:
             if event.kind is EventKind.FEED:
                 self.state.web_feed_count += 1
             elif event.kind is EventKind.PLAY:

@@ -6,17 +6,20 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import json
 import logging
+import hmac
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from queue import Full
 import threading
 from typing import Any
 
 from .events import Event, EventKind
+from .http_limits import BoundedHTTPServer, RateLimit
 
 LOGGER = logging.getLogger(__name__)
 StateProvider = Callable[[], dict[str, object]]
 EventSink = Callable[[Event], None]
-MessageSink = Callable[[str], None]
+ChatSink = Callable[[str, Event | None], None]
 Brain = Callable[[str, dict[str, object]], Any]
 
 
@@ -28,6 +31,8 @@ class ApiConfig:
     port: int = 8080
     api_token: str | None = None
     cors_origin: str = "*"
+    max_connections: int = 8
+    request_timeout: float = 5.0
 
 
 class ApiServer:
@@ -39,7 +44,7 @@ class ApiServer:
         event_sink: EventSink,
         config: ApiConfig | None = None,
         brain: Brain | None = None,
-        message_sink: MessageSink | None = None,
+        chat_sink: ChatSink | None = None,
     ) -> None:
         """Create an API server around callbacks owned by the pet loop."""
 
@@ -47,8 +52,12 @@ class ApiServer:
         self._state_provider = state_provider
         self._event_sink = event_sink
         self._brain = brain
-        self._message_sink = message_sink
-        self._server: ThreadingHTTPServer | None = None
+        self._chat_sink = chat_sink
+        self._reads = RateLimit(interval=0.1, burst=20)
+        self._writes = RateLimit(interval=5.0)
+        self._chats = RateLimit(interval=60.0)
+        self._chat_slot = threading.BoundedSemaphore(1)
+        self._server: BoundedHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
     @property
@@ -65,11 +74,13 @@ class ApiServer:
 
         if self._server is not None:
             return
-        if self.config.host not in {"127.0.0.1", "localhost", "::1"} and not self.config.api_token:
-            LOGGER.warning("API is exposed beyond localhost without TAMAGODJI_API_TOKEN")
+        if not self.config.api_token or not self.config.api_token.strip():
+            LOGGER.warning("API writes disabled: TAMAGODJI_API_TOKEN is missing or blank")
         handler = self._handler_type()
-        self._server = ThreadingHTTPServer((self.config.host, self.config.port), handler)
-        self._server.daemon_threads = True
+        self._server = BoundedHTTPServer(
+            (self.config.host, self.config.port), handler,
+            self.config.max_connections, self.config.request_timeout,
+        )
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         LOGGER.info("Tamagodji API listening on http://%s:%s", *self.address)
@@ -94,6 +105,14 @@ class ApiServer:
         class Handler(BaseHTTPRequestHandler):
             """Handle one JSON API request."""
 
+            def handle(self) -> None:
+                """Avoid exception tracebacks when an HTTP client disconnects normally."""
+
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                    LOGGER.debug("HTTP client disconnected or timed out")
+
             def do_OPTIONS(self) -> None:
                 """Respond to browser CORS preflight requests."""
 
@@ -104,38 +123,65 @@ class ApiServer:
             def do_GET(self) -> None:
                 """Serve health and current-state endpoints."""
 
+                if not api._reads.allow():
+                    self._send_json({"error": "too many reads"}, HTTPStatus.TOO_MANY_REQUESTS)
+                    return
                 if self.path == "/api/health":
                     self._send_json({"ok": True, "service": "tamagodji"})
                     return
                 if self.path == "/api/pet":
-                    self._send_json(api._state_provider())
+                    try:
+                        state = api._state_provider()
+                    except RuntimeError:
+                        LOGGER.exception("Could not read pet state")
+                        self._send_json({"error": "state unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                        return
+                    self._send_json(state)
                     return
                 self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
             def do_POST(self) -> None:
                 """Queue an interaction or ask the optional LLM brain."""
 
+                if not api.config.api_token or not api.config.api_token.strip():
+                    self._send_json({"error": "API writes are disabled"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
                 if not self._authorized():
                     self._send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
                     return
                 payload = self._read_json()
                 if payload is None:
                     return
-                if self.path == "/api/interactions":
-                    self._handle_interaction(payload)
+                try:
+                    if self.path == "/api/interactions":
+                        self._handle_interaction(payload)
+                        return
+                    if self.path == "/api/chat":
+                        self._handle_chat(payload)
+                        return
+                except Full:
+                    self._send_json({"error": "command queue is full"}, HTTPStatus.SERVICE_UNAVAILABLE)
                     return
-                if self.path == "/api/chat":
-                    self._handle_chat(payload)
+                except RuntimeError:
+                    LOGGER.warning("Pet command could not be processed")
+                    self._send_json({"error": "pet unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
                     return
                 self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
             def _handle_interaction(self, payload: dict[str, Any]) -> None:
                 """Validate and queue a deterministic pet interaction."""
 
-                action = str(payload.get("action", "")).lower()
+                raw_action = payload.get("action")
+                action = raw_action.lower() if isinstance(raw_action, str) else ""
                 event_kind = {"feed": EventKind.FEED, "play": EventKind.PLAY}.get(action)
                 if event_kind is None:
                     self._send_json({"error": "action must be feed or play"}, HTTPStatus.BAD_REQUEST)
+                    return
+                if not api._writes.allow():
+                    self._send_json({"error": "please wait before another action"}, HTTPStatus.TOO_MANY_REQUESTS)
+                    return
+                if api._state_provider().get("asleep"):
+                    self._send_json({"error": "Tamagodji is sleeping"}, HTTPStatus.CONFLICT)
                     return
                 api._event_sink(Event(event_kind, source="web"))
                 self._send_json({"accepted": True, "action": action}, HTTPStatus.ACCEPTED)
@@ -146,35 +192,59 @@ class ApiServer:
                 if api._brain is None:
                     self._send_json({"error": "OpenRouter is not configured"}, HTTPStatus.NOT_IMPLEMENTED)
                     return
-                message = str(payload.get("message", "")).strip()
+                raw_message = payload.get("message")
+                message = raw_message.strip() if isinstance(raw_message, str) else ""
                 if not message or len(message) > 500:
                     self._send_json({"error": "message must be 1-500 characters"}, HTTPStatus.BAD_REQUEST)
                     return
-                try:
-                    result = api._brain(message, api._state_provider())
-                except RuntimeError as error:
-                    LOGGER.warning("OpenRouter request failed: %s", error)
-                    self._send_json({"error": "the Tamagodji brain is unavailable"}, HTTPStatus.BAD_GATEWAY)
+                if not api._chats.allow() or not api._writes.allow():
+                    self._send_json({"error": "please wait before another chat"}, HTTPStatus.TOO_MANY_REQUESTS)
                     return
+                if not api._chat_slot.acquire(blocking=False):
+                    self._send_json({"error": "brain is busy"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                try:
+                    try:
+                        result = api._brain(message, api._state_provider())
+                    except RuntimeError:
+                        LOGGER.warning("OpenRouter request failed")
+                        self._send_json({"error": "the Tamagodji brain is unavailable"}, HTTPStatus.BAD_GATEWAY)
+                        return
+                finally:
+                    api._chat_slot.release()
                 action = getattr(result, "action", None)
-                reply = str(getattr(result, "reply", "")).strip()
+                reply = str(getattr(result, "reply", "")).strip()[:180]
+                event = None
                 if action in {"FEED", "PLAY"}:
-                    api._event_sink(Event(EventKind(action.lower()), source="llm"))
-                if reply and api._message_sink:
-                    api._message_sink(reply)
+                    event = Event(EventKind(action.lower()), source="llm")
+                else:
+                    action = None
+                if api._chat_sink:
+                    api._chat_sink(reply, event)
+                elif event is not None:
+                    api._event_sink(event)
                 self._send_json({"reply": reply, "action": action})
 
             def _authorized(self) -> bool:
-                """Check the optional bearer token for state-changing requests."""
+                """Fail closed and compare the bearer token in constant time."""
 
                 expected = api.config.api_token
-                if not expected:
-                    return True
-                return self.headers.get("Authorization") == f"Bearer {expected}"
+                if not expected or not expected.strip() or len(self.headers.get_all("Authorization", [])) != 1:
+                    return False
+                return hmac.compare_digest(
+                    self.headers.get("Authorization", "").encode("utf-8"),
+                    f"Bearer {expected}".encode("utf-8"),
+                )
 
             def _read_json(self) -> dict[str, Any] | None:
                 """Read a bounded JSON object from the request body."""
 
+                if self.headers.get_content_type() != "application/json":
+                    self._send_json({"error": "use application/json"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+                    return None
+                if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
+                    self._send_json({"error": "invalid body framing"}, HTTPStatus.BAD_REQUEST)
+                    return None
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
                 except ValueError:
@@ -184,9 +254,16 @@ class ApiServer:
                     self._send_json({"error": "request body is missing or too large"}, HTTPStatus.BAD_REQUEST)
                     return None
                 try:
-                    value = json.loads(self.rfile.read(length))
-                except (UnicodeDecodeError, json.JSONDecodeError) as error:
-                    self._send_json({"error": f"invalid JSON: {error}"}, HTTPStatus.BAD_REQUEST)
+                    body = self.rfile.read(length)
+                    if len(body) != length:
+                        self._send_json({"error": "incomplete body"}, HTTPStatus.BAD_REQUEST)
+                        return None
+                    value = json.loads(body)
+                except TimeoutError:
+                    self._send_json({"error": "request body timed out"}, HTTPStatus.REQUEST_TIMEOUT)
+                    return None
+                except (ValueError, RecursionError):
+                    self._send_json({"error": "invalid JSON"}, HTTPStatus.BAD_REQUEST)
                     return None
                 if not isinstance(value, dict):
                     self._send_json({"error": "JSON body must be an object"}, HTTPStatus.BAD_REQUEST)
@@ -201,6 +278,10 @@ class ApiServer:
                 self._write_cors_headers()
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                if status in {HTTPStatus.TOO_MANY_REQUESTS, HTTPStatus.SERVICE_UNAVAILABLE}:
+                    self.send_header("Retry-After", "60" if self.path == "/api/chat" else "5")
                 self.end_headers()
                 self.wfile.write(body)
 

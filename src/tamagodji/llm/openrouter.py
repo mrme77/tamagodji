@@ -77,13 +77,16 @@ class OpenRouterBrain:
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+                body = response.read(65_537)
+                if len(body) > 65_536:
+                    raise RuntimeError("OpenRouter response exceeded the size limit")
+                payload = json.loads(body.decode("utf-8"))
         except (
             HTTPError,
             URLError,
             TimeoutError,
-            UnicodeDecodeError,
-            json.JSONDecodeError,
+            ValueError,
+            RecursionError,
         ) as error:
             raise RuntimeError("OpenRouter request failed") from error
         content = self._content_from_response(payload)
@@ -107,7 +110,7 @@ class OpenRouterBrain:
 
         try:
             value = json.loads(content)
-        except json.JSONDecodeError:
+        except (ValueError, RecursionError):
             return BrainReply(reply=content[:180], action=None)
         if not isinstance(value, dict):
             return BrainReply(reply=content[:180], action=None)

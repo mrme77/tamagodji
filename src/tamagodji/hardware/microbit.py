@@ -22,16 +22,27 @@ class MicrobitSerial:
         except serial.SerialException as error:
             raise RuntimeError(f"Could not open micro:bit serial port: {port}") from error
         self.source = source
+        self._buffer = bytearray()
+        self._discarding = False
 
     def poll(self) -> list[Event]:
-        """Read and parse all complete messages currently available."""
+        """Buffer partial lines and bound work and memory per hardware tick."""
 
         events: list[Event] = []
-        while self._serial.in_waiting:
-            line = self._serial.readline().decode("utf-8", errors="replace").strip()
-            event = self._parse(line)
+        self._buffer.extend(self._serial.read(min(self._serial.in_waiting, 512)))
+        while b"\n" in self._buffer:
+            raw_line, _, remaining = self._buffer.partition(b"\n")
+            self._buffer = bytearray(remaining)
+            if self._discarding or len(raw_line) > 128:
+                self._discarding = False
+                LOGGER.warning("Ignoring oversized micro:bit message")
+                continue
+            event = self._parse(raw_line.decode("utf-8", errors="replace").strip())
             if event is not None:
                 events.append(event)
+        if len(self._buffer) > 128:
+            self._buffer.clear()
+            self._discarding = True
         return events
 
     def _parse(self, line: str) -> Event | None:

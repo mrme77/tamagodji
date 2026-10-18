@@ -3,12 +3,11 @@
 import argparse
 from collections.abc import Callable
 import os
-from queue import Queue
 import time
 from pathlib import Path
-from typing import cast
 
 from .app import TamagodjiApp
+from .commands import CommandQueue
 from .events import Event, EventKind
 from .pet import Pet
 from .display.mock import MockDisplay
@@ -87,10 +86,10 @@ def _run_hardware(
     interaction = MicrobitSerial(interaction_port, "interaction")
     room = MicrobitSerial(room_port, "room")
     microphone = AlsaMicrophone() if microphone_enabled else None
-    commands: Queue[tuple[str, object]] = Queue()
+    commands = CommandQueue()
     api = ApiServer(
         app.snapshot,
-        lambda event: commands.put(("event", event)),
+        commands.put,
         config=ApiConfig(
             host=api_host,
             port=api_port,
@@ -98,19 +97,14 @@ def _run_hardware(
             cors_origin=cors_origin,
         ),
         brain=brain,
-        message_sink=lambda message: commands.put(("message", message)),
+        chat_sink=commands.put_chat,
     )
-    if api_enabled:
-        api.start()
-    app.render()
     try:
+        app.render()
+        if api_enabled:
+            api.start()
         while True:
-            while not commands.empty():
-                command, value = commands.get_nowait()
-                if command == "event":
-                    app.handle(cast(Event, value))
-                else:
-                    app.present_message(str(value))
+            commands.drain(app.handle, app.present_message)
             app.handle_many(interaction.poll())
             app.handle_many(room.poll())
             if microphone:
@@ -182,19 +176,18 @@ def main() -> None:
         return
     if not args.interaction_port or not args.room_port:
         parser.error("hardware mode requires --interaction-port and --room-port")
-    _run_hardware(
-        app,
-        args.interaction_port,
-        args.room_port,
-        args.once,
-        args.microphone,
-        args.api,
-        args.api_host,
-        args.api_port,
-        args.api_token,
-        args.cors_origin,
-        brain,
-    )
+    from .hardware.queued_voice import QueuedVoice
+
+    assert voice is not None
+    queued_voice = QueuedVoice(voice)
+    app.voice = queued_voice.submit
+    try:
+        _run_hardware(
+            app, args.interaction_port, args.room_port, args.once, args.microphone,
+            args.api, args.api_host, args.api_port, args.api_token, args.cors_origin, brain,
+        )
+    finally:
+        queued_voice.close()
 
 
 if __name__ == "__main__":
